@@ -16,7 +16,7 @@ Snippets to display in WooCommerce the EU harmonised notice on the legal guarant
 
 ### Prefer a plugin? EU Withdrawal Compliance
 
-If you would rather not deal with code, [EU Withdrawal Compliance](https://wordpress.org/plugins/eu-withdrawal-compliance/), my plugin for the mandatory EU withdrawal function, includes the legal guarantee notice since version 2.3.0:
+If you would rather not deal with code, [EU Withdrawal and Legal Guarantee Compliance](https://wordpress.org/plugins/eu-withdrawal-compliance/), my plugin for the mandatory EU withdrawal function, includes the legal guarantee notice since version 2.3.0:
 
 - Bundles the official PNG and PDF files in the 24 EU languages, so there is nothing to download or upload. The English PNG is rendered from the official English PDF, because the Commission's PNG package has no English version.
 - Shows the notice right above the place order button, in both the classic and the block checkout, with four display modes (full by default, expandable, popover or nothing in the checkout).
