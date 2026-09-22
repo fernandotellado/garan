@@ -4,7 +4,7 @@
 
 Snippets to display in WooCommerce the EU harmonised notice on the legal guarantee of conformity required by Commission Implementing Regulation (EU) 2025/1960 from 27 September 2026, plus the Spanish three-year note.
 
-<!-- TODO: link the AyudaWP article when published / enlazar el artículo de AyudaWP cuando esté publicado -->
+**Full explanation (in Spanish) · Explicación completa:** [ayudawp.com/garan](https://ayudawp.com/garan/)
 
 ---
 
