@@ -5,7 +5,8 @@
  *
  * - Shows the official notice right above the "Place order" button (classic and block checkout).
  * - Adds it to the customer confirmation emails, with the official PDF attached.
- * - Maps Catalan, Basque, Galician (and any language without an official file) to Spanish.
+ * - Languages without an official notice use the official one of their country (Catalan, Basque
+ *   and Galician use Spanish) and anything else uses the fallback language.
  * - Adds an order note recording which notice was shown at checkout.
  *
  * Upload the official COLOUR PNG and the PDF from the European Commission to the Media Library
@@ -32,7 +33,16 @@ function ayudawp_gl_settings() {
 		'pdfs'         => array(
 			'es' => 0,
 		),
-		// Language used when the site language has no official file (ca, eu, gl...).
+		// Languages without an official notice and the official language they use instead.
+		'languages'    => array(
+			'ca' => 'es',
+			'eu' => 'es',
+			'gl' => 'es',
+			'lb' => 'fr',
+			'cy' => 'en',
+			'gd' => 'en',
+		),
+		// Language used when there is no file for the site language.
 		'fallback'     => 'es',
 		// Modules. Switch off whatever your plugin already does.
 		'checkout'     => true,  // Notice above the "Place order" button.
@@ -51,7 +61,8 @@ function ayudawp_gl_settings() {
 }
 
 /**
- * Language of the notice: site language if there is an official file for it, otherwise the fallback.
+ * Language of the notice: the site language (or the official language that replaces it)
+ * if there is a file for it, otherwise the fallback.
  *
  * @return string
  */
@@ -59,7 +70,59 @@ function ayudawp_gl_lang() {
 	$settings = ayudawp_gl_settings();
 	$lang     = strtolower( substr( get_locale(), 0, 2 ) );
 
+	if ( isset( $settings['languages'][ $lang ] ) ) {
+		$lang = $settings['languages'][ $lang ];
+	}
+
 	return empty( $settings['images'][ $lang ] ) ? $settings['fallback'] : $lang;
+}
+
+/**
+ * Attachment ID of an official file.
+ *
+ * @param string $type 'images' or 'pdfs'.
+ * @param string $lang Two-letter language code.
+ * @return int
+ */
+function ayudawp_gl_file_id( $type, $lang ) {
+	$settings = ayudawp_gl_settings();
+	return isset( $settings[ $type ][ $lang ] ) ? absint( $settings[ $type ][ $lang ] ) : 0;
+}
+
+/**
+ * True if there is a valid notice image for the current language.
+ *
+ * @return bool
+ */
+function ayudawp_gl_has_notice() {
+	$image_id = ayudawp_gl_file_id( 'images', ayudawp_gl_lang() );
+	return $image_id && wp_attachment_is_image( $image_id );
+}
+
+/**
+ * Path of the official PDF, only if it is a real PDF inside the uploads folder.
+ *
+ * @param string $lang Two-letter language code.
+ * @return string Empty string when there is no valid file.
+ */
+function ayudawp_gl_pdf_path( $lang ) {
+	$pdf_id = ayudawp_gl_file_id( 'pdfs', $lang );
+	if ( ! $pdf_id || 'application/pdf' !== get_post_mime_type( $pdf_id ) ) {
+		return '';
+	}
+
+	$file    = get_attached_file( $pdf_id );
+	$path    = $file ? realpath( $file ) : false;
+	$uploads = wp_get_upload_dir();
+	$base    = realpath( $uploads['basedir'] );
+
+	if ( ! $path || ! $base || 0 !== strpos( wp_normalize_path( $path ), trailingslashit( wp_normalize_path( $base ) ) ) ) {
+		return '';
+	}
+	if ( 'pdf' !== strtolower( pathinfo( $path, PATHINFO_EXTENSION ) ) || ! is_readable( $path ) ) {
+		return '';
+	}
+	return $path;
 }
 
 /**
@@ -113,18 +176,18 @@ function ayudawp_gl_order_has_goods( $order ) {
  */
 function ayudawp_gl_note( $link = true ) {
 	$settings = ayudawp_gl_settings();
-	if ( ! $settings['note'] || 'ES' !== WC()->countries->get_base_country() ) {
+	if ( ! $settings['note'] || ! function_exists( 'WC' ) || ! WC()->countries || 'ES' !== WC()->countries->get_base_country() ) {
 		return '';
 	}
 
-	$text     = __( 'En España, la garantía legal de los bienes nuevos es de tres años desde la entrega.', 'ayudawp' );
-	$terms_id = wc_terms_and_conditions_page_id();
+	$text = __( 'En España, la garantía legal de los bienes nuevos es de tres años desde la entrega.', 'ayudawp' );
 
 	if ( ! $link ) {
 		return $text;
 	}
 
-	$html = esc_html( $text );
+	$html     = esc_html( $text );
+	$terms_id = wc_terms_and_conditions_page_id();
 	if ( $terms_id ) {
 		$html .= sprintf(
 			' <a href="%1$s" target="_blank" rel="noopener">%2$s</a>',
@@ -141,16 +204,15 @@ function ayudawp_gl_note( $link = true ) {
  * @return string
  */
 function ayudawp_gl_notice_html() {
-	$settings = ayudawp_gl_settings();
-	$lang     = ayudawp_gl_lang();
-	$image_id = absint( isset( $settings['images'][ $lang ] ) ? $settings['images'][ $lang ] : 0 );
-
-	if ( ! $image_id || ! wp_attachment_is_image( $image_id ) ) {
+	if ( ! ayudawp_gl_has_notice() ) {
 		return '';
 	}
 
-	$src  = wp_get_attachment_url( $image_id );
-	$meta = wp_get_attachment_metadata( $image_id );
+	$settings = ayudawp_gl_settings();
+	$lang     = ayudawp_gl_lang();
+	$image_id = ayudawp_gl_file_id( 'images', $lang );
+	$src      = wp_get_attachment_url( $image_id );
+	$meta     = wp_get_attachment_metadata( $image_id );
 
 	$figure = sprintf(
 		'<figure class="ayudawp-gl__aviso"><a href="%1$s" target="_blank" rel="noopener"><img src="%1$s" width="%2$d" height="%3$d" alt="%4$s" loading="lazy"></a><figcaption><a href="%5$s" target="_blank" rel="noopener">%6$s</a></figcaption></figure>',
@@ -190,7 +252,7 @@ function ayudawp_gl_notice_html() {
 function ayudawp_gl_allowed_html() {
 	$allowed = wp_kses_allowed_html( 'post' );
 
-	$allowed['div']['popover']              = true;
+	$allowed['div']['popover']                = true;
 	$allowed['button']['popovertarget']       = true;
 	$allowed['button']['popovertargetaction'] = true;
 	$allowed['button']['autofocus']           = true;
@@ -254,13 +316,12 @@ function ayudawp_gl_email( $order, $sent_to_admin, $plain_text, $email ) {
 	if ( ! $settings['email'] || $sent_to_admin || ! $order instanceof WC_Order || ! $email instanceof WC_Email ) {
 		return;
 	}
-	if ( ! in_array( $email->id, $settings['email_ids'], true ) || ! ayudawp_gl_order_has_goods( $order ) ) {
+	if ( ! in_array( $email->id, $settings['email_ids'], true ) || ! ayudawp_gl_order_has_goods( $order ) || ! ayudawp_gl_has_notice() ) {
 		return;
 	}
 
-	$lang     = ayudawp_gl_lang();
-	$image_id = absint( isset( $settings['images'][ $lang ] ) ? $settings['images'][ $lang ] : 0 );
-	$src      = $image_id ? wp_get_attachment_url( $image_id ) : '';
+	$lang = ayudawp_gl_lang();
+	$src  = wp_get_attachment_url( ayudawp_gl_file_id( 'images', $lang ) );
 	if ( ! $src ) {
 		return;
 	}
@@ -299,25 +360,25 @@ add_action( 'woocommerce_email_after_order_table', 'ayudawp_gl_email', 20, 4 );
 /**
  * Attach the official PDF to the same customer emails.
  *
+ * The filter passes four arguments; the third one is the email's object, which is only
+ * an order in order emails, so it is checked before use. The fourth (email) is not needed.
+ *
  * @param array  $attachments Attachment paths.
  * @param string $email_id    Email ID.
- * @param mixed  $order       Email object (order for order emails).
+ * @param mixed  $object      Email object: the order in order emails, something else in the rest.
  * @return array
  */
-function ayudawp_gl_email_pdf( $attachments, $email_id, $order ) {
+function ayudawp_gl_email_pdf( $attachments, $email_id, $object ) {
 	$settings = ayudawp_gl_settings();
-	if ( ! $settings['pdf'] || ! $order instanceof WC_Order || ! in_array( $email_id, $settings['email_ids'], true ) ) {
+	if ( ! $settings['pdf'] || ! $object instanceof WC_Order || ! in_array( $email_id, $settings['email_ids'], true ) ) {
 		return $attachments;
 	}
-	if ( ! ayudawp_gl_order_has_goods( $order ) ) {
+	if ( ! ayudawp_gl_order_has_goods( $object ) ) {
 		return $attachments;
 	}
 
-	$lang   = ayudawp_gl_lang();
-	$pdf_id = absint( isset( $settings['pdfs'][ $lang ] ) ? $settings['pdfs'][ $lang ] : 0 );
-	$path   = $pdf_id ? get_attached_file( $pdf_id ) : '';
-
-	if ( $path && 'application/pdf' === get_post_mime_type( $pdf_id ) && is_readable( $path ) ) {
+	$path = ayudawp_gl_pdf_path( ayudawp_gl_lang() );
+	if ( $path ) {
 		$attachments[] = $path;
 	}
 	return $attachments;
@@ -327,24 +388,32 @@ add_filter( 'woocommerce_email_attachments', 'ayudawp_gl_email_pdf', 10, 3 );
 /**
  * Order note recording which notice was shown at checkout (classic and block checkout).
  *
+ * Both checkouts reuse the same order and run these hooks again when the customer retries
+ * a failed payment, so the note is written only once per order.
+ *
  * @param WC_Order $order Order.
  */
 function ayudawp_gl_record( $order ) {
 	$settings = ayudawp_gl_settings();
-	if ( ! $settings['record'] || ! $settings['checkout'] || ! $order instanceof WC_Order || ! ayudawp_gl_order_has_goods( $order ) ) {
+	if ( ! $settings['record'] || ! $settings['checkout'] || ! $order instanceof WC_Order ) {
 		return;
 	}
-	if ( '' === ayudawp_gl_notice_html() ) {
+	if ( $order->get_meta( '_ayudawp_gl_notice_shown' ) || ! ayudawp_gl_order_has_goods( $order ) || ! ayudawp_gl_has_notice() ) {
 		return;
 	}
+
+	$lang = ayudawp_gl_lang();
+
 	$order->add_order_note(
 		sprintf(
 			/* translators: 1: language code, 2: display mode */
 			__( 'Aviso armonizado de garantía legal de la UE mostrado en el checkout (idioma: %1$s, modo: %2$s).', 'ayudawp' ),
-			strtoupper( ayudawp_gl_lang() ),
+			strtoupper( $lang ),
 			$settings['display']
 		)
 	);
+	$order->update_meta_data( '_ayudawp_gl_notice_shown', $lang );
+	$order->save_meta_data();
 }
 add_action( 'woocommerce_checkout_order_created', 'ayudawp_gl_record' );
 add_action( 'woocommerce_store_api_checkout_order_processed', 'ayudawp_gl_record' );
